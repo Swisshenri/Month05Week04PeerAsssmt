@@ -1,0 +1,177 @@
+---
+title: "Analysis on Storm Database - Peer Graded Assignment"
+author: "Henri"
+date: "10/21/2019"
+output: html_document
+---
+
+# Exploring the US National Oceanic and Atmospheric Administration´s (NOAA) storm database that tracks major storms and weather events.
+
+## Synopsis
+
+The events in the database start in the year 1950 and end in November 2011. Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+our data analysis must address the following questions:
+
+  1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+
+  2. Across the United States, which types of events have the greatest economic consequences?
+
+## Data Processing
+
+### Loading and pre-processing the data
+
+Download the file to a directory within local computer
+The character "~" is the local root directory by default
+
+Then load packages
+
+```{r setdir, echo=T, results='hide'}
+
+setwd("~/Documents/JOHN HOPKINS UNIV/MONTH 05 Reproducible Research/MO05-Week04/Assignmt_Mo5_Week04")
+
+library(dplyr)
+library(ggplot2)
+
+```
+
+load the data 
+
+```{r load data and quick check, cache=TRUE}
+
+StormDataRaw <- read.csv("repdata-data-StormData.csv", header=TRUE, stringsAsFactors=FALSE)
+
+## head(StormDataRaw) to check details
+
+dim(StormDataRaw)
+
+```
+
+
+Could also check individual / unique items 
+
+eg:   id_uniq_fields <- sapply(StormDataRaw, unique) ## way of checking the contents; summary(id_uniq_fields) 
+
+      
+
+
+### Calculate Total Fatalities and Injuries
+
+Because adding up two variables fatalities and injuries is incompatible, this work will present two different plots one for Fatalities and one for Injuries 
+
+Add up all Fatalities by Specific Event and report on major 8 Events
+
+```{r calculate fatalities}
+
+## First add up
+sumEventsFatal <- aggregate(FATALITIES ~ EVTYPE, StormDataRaw, sum, na.rm = TRUE)
+
+## quick check
+## head(sumEventsFatal,10)
+
+## order by top 8 events that cause fatalities
+Top_eight_fatal <- sumEventsFatal[order(-sumEventsFatal$FATALITIES), ][1:8, ]
+
+## Plot
+
+ggplot(Top_eight_fatal, aes(x = EVTYPE, y = FATALITIES)) + 
+  geom_bar(stat = "identity", fill = "magenta") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  xlab("Event ") + ylab("# of Fatalities") + ggtitle("Total Fatalities by Weather Events / Top 8")
+
+```
+
+The event Tornado causes the most fatalities
+
+
+
+### Add up all Injuries by Specific Event and report on major 8 Events
+
+```{r calculate injuries}
+## First add up
+sumEventsInjuries <- aggregate(INJURIES ~ EVTYPE, StormDataRaw, sum, na.rm = TRUE)
+
+## quick check
+head(sumEventsFatal,10)
+
+## order by top 8 events that cause fatalities
+Top_eight_injuries <- sumEventsInjuries[order(-sumEventsInjuries$INJURIES), ][1:8, ]
+
+
+## Plot
+ggplot(Top_eight_injuries, aes(x = EVTYPE, y = INJURIES)) + 
+  geom_bar(stat = "identity", fill = "purple") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  xlab("Event ") + ylab("# of Injuries") + ggtitle("Total Injuries by Weather Events / Top 8")
+```
+
+The event Tornado causes the most injuries
+
+
+### Calculate Economic Damage by Event
+
+It is basically the same calculations as the first two plots. However, to get the right answer tnew fields have to be added to account for the fact that PropDMG and CropDmg (property damage and crop damage) fields need to adjusted. Both fields PROPDMGEXP and CROPDMGEXP will include a letter eg "H" to disclose the fact that the amount is in a different volumen of magnitude. "H" accounts for Hundreds or 100 and  "K", "M" and "B" to thousands, millions and billions. (10^3, 10^6, 10^9)
+
+```{r calculate economic damage}
+
+## First created a subset working file with only the fields we will need
+
+wf <- subset(StormDataRaw, select = c("EVTYPE", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP"))
+
+id_uniq_wf <- sapply(wf, unique) ## way of checking the contents 
+summary(id_uniq_wf)
+
+## to understand what variables are stored
+id_uniq_wf$PROPDMGEXP
+id_uniq_wf$CROPDMGEXP
+
+## As can be seen there are other values than just H, K, M, B for all others the program will multiply by one
+
+## created another working file "xf"  to store the results 
+
+xf <- wf %>%
+  mutate(PropTot = case_when(
+    PROPDMGEXP == "H" ~ PROPDMG * 10^2,
+    PROPDMGEXP == "K" ~ PROPDMG * 10^3,
+    PROPDMGEXP == "M" ~ PROPDMG * 10^6,
+    PROPDMGEXP == "B" ~ PROPDMG * 10^9,
+    TRUE ~ PROPDMG * 1 
+  )) %>%
+  mutate(CropTot = case_when(
+    CROPDMGEXP == "H" ~ CROPDMG * 10^2,
+    CROPDMGEXP == "K" ~ CROPDMG * 10^3,
+    CROPDMGEXP == "M" ~ CROPDMG * 10^6,
+    CROPDMGEXP == "B" ~ CROPDMG * 10^9,
+    TRUE ~ CROPDMG * 1 
+  ))
+  
+## check if variables where converted ok 
+
+chk1 <- subset(xf, PROPDMGEXP == "m")
+head(chk1, 10)
+
+chk2 <- subset(xf, PROPDMGEXP == "B")
+head(chk2, 10)
+
+xf$TotDamage <- xf$PropTot + xf$CropTot
+
+
+## Highest Damage
+
+sumEconomicDamage <- aggregate(TotDamage ~ EVTYPE, xf, sum, na.rm = TRUE)
+
+head(sumEconomicDamage)
+
+Top_ten_Ec_damage <- sumEconomicDamage[order(-sumEconomicDamage$TotDamage), ][1:10, ]
+
+ggplot(Top_ten_Ec_damage, aes(x = EVTYPE, y = TotDamage/10^6)) + 
+  geom_bar(stat = "identity", fill = "navyblue") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  xlab("Event ") + ylab("Total $ in millions") + ggtitle("Total Economic Damage by Weather Events / Top 10")
+
+```
+
+
+
+## RESULTS 
+
+### As can be seen Tornado is the event that causes more fatalities and injuries. However in economic terms, Flood is what causes more damage.
